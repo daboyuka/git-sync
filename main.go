@@ -21,17 +21,25 @@ func main() {
 	repoURL, branch := flag.Arg(0), flag.Arg(1)
 
 	repo, err := git.PlainOpen(".")
-	handleErr(err, "error opening repo")
+	if err == git.ErrRepositoryNotExists {
+		repo, err = git.PlainInit(".", false)
+	}
+	handleErr(err, "error opening/initializing repo")
 
 	remote, err := repo.Remote("origin")
 	if err == git.ErrRemoteNotFound {
 		remote, err = repo.CreateRemote(&config.RemoteConfig{Name: "origin", URLs: []string{repoURL}})
+	} else if err == nil && remote.Config().URLs[0] != repoURL {
+		err = fmt.Errorf("remote URL mismatch: %s != %s", remote.Config().URLs[0], repoURL)
 	}
 	handleErr(err, "error getting remote")
 
 	err = remote.Fetch(&git.FetchOptions{
-		RefSpecs: []config.RefSpec{"refs/*:refs/*"},
+		RefSpecs: []config.RefSpec{
+			config.RefSpec(fmt.Sprintf("+refs/heads/*:refs/remotes/%s/*", remote.Config().Name)),
+		},
 		Force:    true,
+		Progress: os.Stderr,
 	})
 	if err == git.NoErrAlreadyUpToDate {
 		err = nil
